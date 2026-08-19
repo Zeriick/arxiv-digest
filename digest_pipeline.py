@@ -4,7 +4,7 @@ from digest_config import (
     log_runtime_config,
     validate_runtime_config,
 )
-from digest_email import build_email, send_email
+from digest_email import build_email, build_email_subject, send_email
 from digest_llm import batch_assess_papers, batch_summarize_papers
 from digest_runtime import (
     LOGGER,
@@ -371,15 +371,21 @@ def main():
     LOGGER.info("Selected papers artifact written | path=%s count=%d", selected_path, len(selected))
 
     email_preview_path = None
+    email_subject = None
     if selected:
         html = build_email(selected)
+        email_subject = build_email_subject(selected)
         email_preview_path = write_text_artifact("email_preview.html", html)
-        LOGGER.info("Email preview written | path=%s", email_preview_path)
+        LOGGER.info(
+            "Email preview written | path=%s subject=%s",
+            email_preview_path,
+            email_subject,
+        )
 
         if config["dry_run"]:
             LOGGER.info("DRY_RUN enabled, skipping email send")
         else:
-            send_email(html, smtp_config)
+            send_email(html, smtp_config, subject=email_subject)
     else:
         LOGGER.info("No papers selected, skipping email generation and email send")
 
@@ -405,6 +411,7 @@ def main():
         "selected_titles": [paper["title"] for paper in selected],
         "selected_ids": [paper["id"] for paper in selected],
         "log_dir": str(get_run_dir()) if get_run_dir() else None,
+        "email_subject": email_subject,
         "email_preview_path": str(email_preview_path) if email_preview_path else None,
         "openalex_enrichment_path": str(openalex_path) if openalex_path else None,
     }

@@ -6,6 +6,9 @@ from html import escape
 
 from digest_runtime import LOGGER
 
+DEFAULT_EMAIL_SUBJECT = "Top 10: OS, AI Infra, AI Compilers, Program Analysis"
+HIGH_SCORE_THRESHOLD = 90
+
 
 def score_to_color(score):
     if score >= 90:
@@ -15,6 +18,22 @@ def score_to_color(score):
     if score >= 70:
         return "#7c3aed"
     return "#6b7280"
+
+
+def build_email_subject(papers):
+    high_score_papers = [
+        paper
+        for paper in papers
+        if paper.get("score", 0) >= HIGH_SCORE_THRESHOLD
+    ]
+    if not high_score_papers:
+        return DEFAULT_EMAIL_SUBJECT
+
+    highest_score = max(paper["score"] for paper in high_score_papers)
+    return (
+        f"🚨 必读：{len(high_score_papers)} 篇 90+ 高分论文"
+        f"（最高 {highest_score} 分）｜{DEFAULT_EMAIL_SUBJECT}"
+    )
 
 
 def build_email(papers):
@@ -82,7 +101,7 @@ def build_email(papers):
     """
 
 
-def send_email(html, smtp_config, subject="Top 10: OS, AI Infra, AI Compilers, Program Analysis"):
+def send_email(html, smtp_config, subject=DEFAULT_EMAIL_SUBJECT):
     recipients = [item.strip() for item in smtp_config["to"].split(",") if item.strip()]
     msg = MIMEText(html, "html", "utf-8")
     msg["Subject"] = subject
@@ -92,12 +111,13 @@ def send_email(html, smtp_config, subject="Top 10: OS, AI Infra, AI Compilers, P
     smtp_class = smtplib.SMTP_SSL if smtp_config["use_ssl"] else smtplib.SMTP
 
     LOGGER.info(
-        "Sending email | host=%s port=%s recipients=%d use_ssl=%s use_starttls=%s",
+        "Sending email | host=%s port=%s recipients=%d use_ssl=%s use_starttls=%s subject=%s",
         smtp_config["host"],
         smtp_config["port"],
         len(recipients),
         smtp_config["use_ssl"],
         smtp_config["use_starttls"],
+        subject,
     )
     start_time = time.perf_counter()
 
