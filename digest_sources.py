@@ -18,6 +18,10 @@ SEEN_IDS_PATH = Path("seen_ids.json")
 OPENALEX_CACHE_PATH = Path("openalex_cache.json")
 ARXIV_SEARCH_QUERY = "(cat:cs.OS OR cat:cs.PL OR cat:cs.LG OR cat:cs.DC OR cat:cs.AR)"
 ARXIV_API_BASE = "https://export.arxiv.org/api/query"
+ARXIV_RSS_CATEGORIES = ("cs.OS", "cs.PL", "cs.LG", "cs.DC", "cs.AR")
+ARXIV_RSS_ATOM_URL = f"https://rss.arxiv.org/atom/{'+'.join(ARXIV_RSS_CATEGORIES)}"
+ARXIV_RSS_INCLUDED_ANNOUNCE_TYPES = {"new", "cross"}
+ARXIV_USER_AGENT = "arxiv-digest/1.0 (+https://github.com/Zeriick/arxiv-digest)"
 ARXIV_TIMEOUT_SECONDS = 30
 ARXIV_MAX_ATTEMPTS = 5
 ARXIV_RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
@@ -99,7 +103,7 @@ def compute_arxiv_backoff_seconds(attempt, retry_after_header=None):
 
 def fetch_arxiv_feed(url):
     headers = {
-        "User-Agent": "arxiv-digest/1.0 (+https://github.com/)",
+        "User-Agent": ARXIV_USER_AGENT,
         "Accept": "application/atom+xml, application/xml;q=0.9, */*;q=0.8",
     }
     request = Request(url, headers=headers)
@@ -282,6 +286,131 @@ def get_arxiv_announcement_for_submission(submitted_utc):
     return build_announcement_datetime(announcement_date)
 
 
+def get_arxiv_announcement_for_rss_entry(entry):
+    published_utc = parse_entry_published_utc(entry)
+    published_et = published_utc.astimezone(ARXIV_ANNOUNCEMENT_TIMEZONE)
+    return published_et - timedelta(hours=4)
+
+
+def normalize_arxiv_rss_entry(entry):
+    rss_id = str(getattr(entry, "id", "")).strip()
+    id_match = re.fullmatch(r"oai:arXiv\.org:(.+)", rss_id, flags=re.IGNORECASE)
+    if not id_match:
+        raise ValueError(f"unexpected arXiv RSS entry id: {rss_id!r}")
+
+    arxiv_id = id_match.group(1)
+    entry["id"] = f"http://arxiv.org/abs/{arxiv_id}"
+    entry["link"] = f"https://arxiv.org/abs/{arxiv_id}"
+
+    abstract = str(getattr(entry, "summary", ""))
+    entry["summary"] = re.sub(
+        r"\AarXiv:\S+\s+Announce Type:\s*\S+\s+Abstract:\s*",
+        "",
+        abstract,
+        flags=re.IGNORECASE,
+    )
+
+    creator = str(getattr(entry, "author", "")).strip()
+    if creator:
+        entry["authors"] = [
+            {"name": name.strip()}
+            for name in creator.split(",")
+            if name.strip()
+        ]
+
+    return entry
+
+
+def fetch_papers_from_current_rss(config, target_announcement):
+    target_announcement_et = target_announcement["announcement_et"]
+    target_announcement_local = target_announcement["announcement_local"]
+    local_tz = ZoneInfo(config["local_timezone"])
+
+    LOGGER.info(
+        "Fetching current arXiv announcement from Atom feed | target_announcement_et=%s url=%s",
+        target_announcement_et.isoformat(),
+        ARXIV_RSS_ATOM_URL,
+    )
+    start_time = time.perf_counter()
+    feed = fetch_arxiv_feed(ARXIV_RSS_ATOM_URL)
+    duration = time.perf_counter() - start_time
+
+    if getattr(feed, "bozo", False):
+        LOGGER.warning(
+            "arXiv Atom feed parser reported a warning | error=%s",
+            getattr(feed, "bozo_exception", "unknown"),
+        )
+
+    entries = list(feed.entries)
+    if not entries:
+        raise RuntimeError("arXiv Atom feed returned no entries")
+
+    announcements_by_entry = []
+    for entry in entries:
+        announcements_by_entry.append(
+            (entry, get_arxiv_announcement_for_rss_entry(entry))
+        )
+
+    available_announcements = sorted(
+        {announcement_et for _entry, announcement_et in announcements_by_entry}
+    )
+    if target_announcement_et not in available_announcements:
+        LOGGER.info(
+            "Current arXiv Atom feed does not match target announcement, using search API | target_announcement_et=%s available_announcements=%s",
+            target_announcement_et.isoformat(),
+            ",".join(item.isoformat() for item in available_announcements),
+        )
+        return None
+
+    selected_entries = []
+    artifact_entries = []
+    skipped_replacements = 0
+
+    for entry, announcement_et in announcements_by_entry:
+        if announcement_et != target_announcement_et:
+            continue
+
+        announce_type = str(getattr(entry, "arxiv_announce_type", "")).strip().lower()
+        if announce_type not in ARXIV_RSS_INCLUDED_ANNOUNCE_TYPES:
+            skipped_replacements += 1
+            continue
+
+        normalized_entry = normalize_arxiv_rss_entry(entry)
+        published_utc = parse_entry_published_utc(normalized_entry)
+        published_local = published_utc.astimezone(local_tz)
+        announcement_local = announcement_et.astimezone(local_tz)
+        title = " ".join(getattr(normalized_entry, "title", "").split())
+        entry_id = getattr(normalized_entry, "id", "")
+        entry_link = getattr(normalized_entry, "link", "")
+
+        artifact_entries.append(
+            {
+                "id": entry_id,
+                "title": title,
+                "link": entry_link,
+                "published_local": published_local.isoformat(),
+                "published_local_date": published_local.date().isoformat(),
+                "announcement_local": announcement_local.isoformat(),
+                "announcement_et": announcement_et.isoformat(),
+                "announce_type": announce_type,
+                "source": "arxiv_atom_feed",
+            }
+        )
+        selected_entries.append(normalized_entry)
+
+    write_json_artifact("fetched_entries.json", artifact_entries)
+    LOGGER.info(
+        "Collected papers from current arXiv Atom feed | target_announcement_local=%s target_announcement_et=%s count=%d skipped_replacements=%d duration=%.2fs url=%s",
+        target_announcement_local.isoformat(),
+        target_announcement_et.isoformat(),
+        len(selected_entries),
+        skipped_replacements,
+        duration,
+        ARXIV_RSS_ATOM_URL,
+    )
+    return selected_entries, target_announcement, 1
+
+
 def fetch_papers(config):
     page_size = config["arxiv_page_size"]
     local_tz = ZoneInfo(config["local_timezone"])
@@ -293,6 +422,19 @@ def fetch_papers(config):
     page_index = 0
     start = 0
     stop_fetching = False
+
+    if config["target_days_ago"] == 1:
+        try:
+            rss_result = fetch_papers_from_current_rss(config, target_announcement)
+        except (HTTPError, URLError, TimeoutError, RuntimeError, ValueError) as exc:
+            LOGGER.warning(
+                "Current arXiv Atom feed unavailable, using search API | error=%s url=%s",
+                exc,
+                ARXIV_RSS_ATOM_URL,
+            )
+        else:
+            if rss_result is not None:
+                return rss_result
 
     while True:
         url = build_arxiv_url(page_size)

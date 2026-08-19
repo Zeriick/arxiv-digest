@@ -2,7 +2,7 @@ name: Daily Arxiv Digest
 
 on:
   schedule:
-    - cron: '22 0 * * *'   # 每天 UTC 00:22（Shanghai 早上 08:22）
+    - cron: '22 5 * * *'   # 每天 UTC 05:22（Shanghai 下午 13:22；arXiv 午夜 ET feed 更新后）
   workflow_dispatch:
 
 permissions:
