@@ -26,7 +26,7 @@
 ## 功能概览
 
 - 优先使用 arXiv 官方每日 Atom feed 抓取最近一期公告；回看更早公告时使用 search API
-- 使用 DashScope 兼容 OpenAI API 的模型做评估和摘要
+- 使用 DeepSeek 兼容 OpenAI API 的模型做评估和摘要
 - 先判断论文是否在 digest 范围内，再按“是否值得认真读”打分
 - 对通过筛选的论文排序，最终只发送 Top 10
 - 入选论文中只要有评分不低于 90 分的论文，邮件标题会醒目标注 90+ 篇数和最高分
@@ -84,7 +84,7 @@ source ./local.env.sh
 
 你至少需要确认这些变量是正确的：
 
-- `DASHSCOPE_API_KEY`
+- `DEEPSEEK_API_KEY`
 - `EMAIL_USER`
 - `EMAIL_PASS`
 - `EMAIL_TO`
@@ -94,7 +94,7 @@ source ./local.env.sh
 
 | 变量 | 说明 |
 | --- | --- |
-| `DASHSCOPE_API_KEY` | DashScope API Key |
+| `DEEPSEEK_API_KEY` | DeepSeek API Key |
 | `EMAIL_USER` | 发件邮箱 |
 | `EMAIL_PASS` | 发件邮箱密码 |
 | `EMAIL_TO` | 收件邮箱 |
@@ -109,8 +109,9 @@ source ./local.env.sh
 | `ARXIV_PAGE_SIZE` | 每页抓取多少篇，默认 100 |
 | `TARGET_DAYS_AGO` | 回看几期 arXiv 已发布公告，默认 `1` 表示最近一期公告 |
 | `LOCAL_TIMEZONE` | 本地时区，默认 `Asia/Shanghai` |
-| `LLM_MODEL` | 评估和摘要使用的模型，默认 `qwen3.6-plus` |
+| `LLM_MODEL` | 评估和摘要使用的模型，默认 `deepseek-flash` |
 | `LLM_TIMEOUT_SECONDS` | 单次 LLM 请求超时时间 |
+| `LLM_REASONING_EFFORT` | DeepSeek 推理强度，可选 `none`、`low`、`high`、`max`，默认 `none` |
 | `LLM_ASSESS_MAX_WORKERS` | 相关性评估阶段的并发线程数，默认 8 |
 | `LLM_SUMMARY_MAX_WORKERS` | summary 阶段的并发线程数，默认 4 |
 | `OPENALEX_ENRICHMENT_ENABLED` | 是否在评估前按作者名用 OpenAlex 补作者单位，默认 `true` |
@@ -303,7 +304,7 @@ git push
 
 添加这些 secrets：
 
-- `DASHSCOPE_API_KEY`
+- `DEEPSEEK_API_KEY`
 - `EMAIL_USER`
 - `EMAIL_PASS`
 - `EMAIL_TO`

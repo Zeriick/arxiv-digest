@@ -8,12 +8,7 @@ from prompts import ASSESS_PROMPT, SUMMARY_PROMPT, SYSTEM_PROMPT
 
 
 def build_extra_body(config):
-    extra_body = {
-        "enable_thinking": config["llm_enable_thinking"],
-    }
-    if config["llm_thinking_budget"] is not None:
-        extra_body["thinking_budget"] = config["llm_thinking_budget"]
-    return extra_body
+    return {"reasoning_effort": config["llm_reasoning_effort"]}
 
 
 def parse_json_response(text):
@@ -46,13 +41,12 @@ def llm_call(prompt, stage, paper_tag, config):
     start_time = time.perf_counter()
     extra_body = build_extra_body(config)
     LOGGER.info(
-        "LLM request started | stage=%s paper=%s model=%s timeout=%ss thinking=%s thinking_budget=%s",
+        "LLM request started | stage=%s paper=%s model=%s timeout=%ss reasoning_effort=%s",
         stage,
         paper_tag,
         config["llm_model"],
         config["llm_timeout_seconds"],
-        config["llm_enable_thinking"],
-        config["llm_thinking_budget"],
+        config["llm_reasoning_effort"],
     )
     try:
         response = get_client().chat.completions.create(
@@ -63,6 +57,7 @@ def llm_call(prompt, stage, paper_tag, config):
             ],
             temperature=0.2,
             timeout=config["llm_timeout_seconds"],
+            response_format={"type": "json_object"},
             extra_body=extra_body,
         )
     except Exception as exc:

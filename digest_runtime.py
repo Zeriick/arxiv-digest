@@ -7,8 +7,11 @@ from pathlib import Path
 
 from openai import OpenAI
 
-DASHSCOPE_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-DEFAULT_LLM_MODEL = "qwen3.6-plus"
+DEEPSEEK_BASE_URL = "https://api.deepseek.com"
+DEEPSEEK_API_KEY_ENV = "DEEPSEEK_API_KEY"
+DEFAULT_LLM_MODEL = "deepseek-flash"
+DEFAULT_LLM_REASONING_EFFORT = "none"
+VALID_LLM_REASONING_EFFORTS = {"none", "low", "high", "max"}
 DEFAULT_LOG_DIR = "logs"
 
 LOGGER = logging.getLogger("arxiv_digest")
@@ -90,13 +93,26 @@ def mask_value(value):
     return f"{value[:4]}...{value[-4:]}"
 
 
+def get_llm_reasoning_effort():
+    """Resolve DeepSeek reasoning mode while keeping the old toggle compatible."""
+    configured_effort = os.getenv("LLM_REASONING_EFFORT", "").strip().lower()
+    if configured_effort:
+        return configured_effort
+
+    legacy_thinking_enabled = os.getenv("LLM_ENABLE_THINKING", "").strip().lower()
+    if legacy_thinking_enabled in {"1", "true", "yes", "on"}:
+        return "high"
+
+    return DEFAULT_LLM_REASONING_EFFORT
+
+
 def get_client():
     global CLIENT
 
     if CLIENT is None:
         CLIENT = OpenAI(
-            api_key=os.getenv("DASHSCOPE_API_KEY"),
-            base_url=DASHSCOPE_BASE_URL,
+            api_key=os.getenv(DEEPSEEK_API_KEY_ENV),
+            base_url=DEEPSEEK_BASE_URL,
         )
 
     return CLIENT

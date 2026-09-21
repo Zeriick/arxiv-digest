@@ -283,6 +283,7 @@ def repair_macro_json_with_llm(content, config):
         ],
         temperature=0,
         timeout=config["llm_timeout_seconds"],
+        response_format={"type": "json_object"},
         extra_body=extra_body,
     )
     content = response.choices[0].message.content or ""
@@ -302,11 +303,10 @@ def call_macro_synthesis_model(prompt, config):
     start_time = time.perf_counter()
     extra_body = build_extra_body(config)
     LOGGER.info(
-        "Macro LLM synthesis started | model=%s timeout=%ss thinking=%s thinking_budget=%s",
+        "Macro LLM synthesis started | model=%s timeout=%ss reasoning_effort=%s",
         config["llm_model"],
         config["llm_timeout_seconds"],
-        config["llm_enable_thinking"],
-        config["llm_thinking_budget"],
+        config["llm_reasoning_effort"],
     )
 
     response = get_client().chat.completions.create(
@@ -317,6 +317,7 @@ def call_macro_synthesis_model(prompt, config):
         ],
         temperature=0.2,
         timeout=config["llm_timeout_seconds"],
+        response_format={"type": "json_object"},
         extra_body=extra_body,
     )
 

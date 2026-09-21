@@ -1,7 +1,14 @@
 import os
 from zoneinfo import ZoneInfo
 
-from digest_runtime import DEFAULT_LLM_MODEL, LOGGER, mask_value, write_json_artifact
+from digest_runtime import (
+    DEFAULT_LLM_MODEL,
+    LOGGER,
+    VALID_LLM_REASONING_EFFORTS,
+    get_llm_reasoning_effort,
+    mask_value,
+    write_json_artifact,
+)
 
 DEFAULT_ARXIV_PAGE_SIZE = 100
 DEFAULT_MAX_SELECTED_PAPERS = 10
@@ -30,15 +37,12 @@ def int_env(name, default):
 
 
 def get_runtime_config():
-    thinking_budget_raw = os.getenv("LLM_THINKING_BUDGET", "").strip()
-
     return {
         "dry_run": bool_env("DRY_RUN", False),
         "log_raw_llm": bool_env("LOG_RAW_LLM", False),
         "llm_model": os.getenv("LLM_MODEL", DEFAULT_LLM_MODEL).strip() or DEFAULT_LLM_MODEL,
         "llm_timeout_seconds": int_env("LLM_TIMEOUT_SECONDS", 90),
-        "llm_enable_thinking": bool_env("LLM_ENABLE_THINKING", False),
-        "llm_thinking_budget": int(thinking_budget_raw) if thinking_budget_raw else None,
+        "llm_reasoning_effort": get_llm_reasoning_effort(),
         "llm_assess_max_workers": int_env(
             "LLM_ASSESS_MAX_WORKERS",
             DEFAULT_LLM_ASSESS_MAX_WORKERS,
@@ -85,8 +89,8 @@ def get_smtp_config():
 def validate_runtime_config(config, smtp_config):
     missing = []
 
-    if not os.getenv("DASHSCOPE_API_KEY"):
-        missing.append("DASHSCOPE_API_KEY")
+    if not os.getenv("DEEPSEEK_API_KEY"):
+        missing.append("DEEPSEEK_API_KEY")
 
     if not config["dry_run"]:
         for name, value in {
@@ -108,6 +112,13 @@ def validate_runtime_config(config, smtp_config):
 
     if config["llm_timeout_seconds"] <= 0:
         raise RuntimeError("LLM_TIMEOUT_SECONDS must be greater than 0")
+
+    if config["llm_reasoning_effort"] not in VALID_LLM_REASONING_EFFORTS:
+        allowed = ", ".join(sorted(VALID_LLM_REASONING_EFFORTS))
+        raise RuntimeError(
+            f"LLM_REASONING_EFFORT must be one of: {allowed}, "
+            f"got {config['llm_reasoning_effort']!r}"
+        )
 
     if config["llm_assess_max_workers"] <= 0:
         raise RuntimeError("LLM_ASSESS_MAX_WORKERS must be greater than 0")
@@ -139,8 +150,7 @@ def log_runtime_config(config, smtp_config):
         "log_raw_llm": config["log_raw_llm"],
         "llm_model": config["llm_model"],
         "llm_timeout_seconds": config["llm_timeout_seconds"],
-        "llm_enable_thinking": config["llm_enable_thinking"],
-        "llm_thinking_budget": config["llm_thinking_budget"],
+        "llm_reasoning_effort": config["llm_reasoning_effort"],
         "llm_assess_max_workers": config["llm_assess_max_workers"],
         "llm_summary_max_workers": config["llm_summary_max_workers"],
         "max_selected_papers": config["max_selected_papers"],
@@ -157,16 +167,15 @@ def log_runtime_config(config, smtp_config):
         "smtp_use_starttls": smtp_config["use_starttls"],
         "email_user": smtp_config["user"],
         "email_to": smtp_config["to"],
-        "dashscope_api_key_masked": mask_value(os.getenv("DASHSCOPE_API_KEY", "")),
+        "deepseek_api_key_masked": mask_value(os.getenv("DEEPSEEK_API_KEY", "")),
         "email_pass_masked": mask_value(smtp_config["password"]),
     }
     LOGGER.info(
-        "Runtime configuration loaded | dry_run=%s model=%s llm_timeout=%ss thinking=%s thinking_budget=%s llm_assess_workers=%s llm_summary_workers=%s max_selected=%s arxiv_page_size=%s target_days_ago=%s timezone=%s openalex_enabled=%s openalex_timeout=%ss openalex_workers=%s smtp_host=%s smtp_port=%s smtp_ssl=%s smtp_starttls=%s log_raw_llm=%s",
+        "Runtime configuration loaded | dry_run=%s model=%s llm_timeout=%ss reasoning_effort=%s llm_assess_workers=%s llm_summary_workers=%s max_selected=%s arxiv_page_size=%s target_days_ago=%s timezone=%s openalex_enabled=%s openalex_timeout=%ss openalex_workers=%s smtp_host=%s smtp_port=%s smtp_ssl=%s smtp_starttls=%s log_raw_llm=%s",
         safe_config["dry_run"],
         safe_config["llm_model"],
         safe_config["llm_timeout_seconds"],
-        safe_config["llm_enable_thinking"],
-        safe_config["llm_thinking_budget"],
+        safe_config["llm_reasoning_effort"],
         safe_config["llm_assess_max_workers"],
         safe_config["llm_summary_max_workers"],
         safe_config["max_selected_papers"],
