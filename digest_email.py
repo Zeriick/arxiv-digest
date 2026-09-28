@@ -7,6 +7,7 @@ from html import escape
 from digest_runtime import LOGGER
 
 DEFAULT_EMAIL_SUBJECT = "Top 10: OS, AI Infra, AI Compilers, Program Analysis"
+WEEKEND_EMPTY_EMAIL_SUBJECT = "论文日报暂无更新｜周末愉快"
 HIGH_SCORE_THRESHOLD = 90
 
 
@@ -95,6 +96,24 @@ def build_email(papers):
             </p>
           </header>
           {''.join(cards)}
+        </div>
+      </body>
+    </html>
+    """
+
+
+def build_weekend_empty_email(source_unavailable=False):
+    if source_unavailable:
+        message = "今天暂时没能获取 arXiv 的论文更新，先送上一封空日报。周末愉快！"
+    else:
+        message = "今天没有新论文需要推送。周末愉快，好好休息！"
+
+    return f"""
+    <html>
+      <body style="margin:0;padding:32px 18px;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#0f172a;">
+        <div style="max-width:600px;margin:0 auto;padding:32px;background:#ffffff;border-radius:20px;">
+          <h1 style="font-size:26px;margin:0 0 16px;">论文日报暂无更新</h1>
+          <p style="font-size:16px;line-height:1.8;margin:0;">{escape(message)}</p>
         </div>
       </body>
     </html>

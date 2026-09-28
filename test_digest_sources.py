@@ -1,11 +1,16 @@
 import unittest
 from datetime import datetime
+from io import BytesIO
+from types import SimpleNamespace
+from urllib.error import HTTPError
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 import feedparser
 
 from digest_sources import (
+    fetch_arxiv_feed,
+    fetch_papers,
     fetch_papers_from_current_rss,
     get_arxiv_announcement_for_rss_entry,
     normalize_arxiv_rss_entry,
@@ -66,6 +71,20 @@ def target_announcement(day=18):
 
 
 class ArxivRssTests(unittest.TestCase):
+    @patch("digest_sources.time.sleep")
+    @patch("digest_sources.urlopen")
+    def test_http_406_is_retried(self, urlopen_mock, sleep_mock):
+        urlopen_mock.side_effect = [
+            HTTPError("https://export.arxiv.org/api/query", 406, "Not Acceptable", {}, None),
+            BytesIO(ATOM_FIXTURE),
+        ]
+
+        feed = fetch_arxiv_feed("https://export.arxiv.org/api/query")
+
+        self.assertEqual(len(feed.entries), 2)
+        self.assertEqual(urlopen_mock.call_count, 2)
+        sleep_mock.assert_called_once_with(5.0)
+
     def test_rss_midnight_maps_to_previous_evening_announcement(self):
         entry = parse_fixture().entries[0]
 
@@ -127,6 +146,25 @@ class ArxivRssTests(unittest.TestCase):
 
         self.assertIsNone(result)
         write_artifact_mock.assert_not_called()
+
+    @patch("digest_sources.time.sleep")
+    @patch("digest_sources.get_target_announcement", return_value=target_announcement())
+    @patch("digest_sources.fetch_arxiv_feed")
+    def test_failed_later_page_propagates_source_error(
+        self, fetch_mock, _target_mock, _sleep_mock
+    ):
+        first_page = SimpleNamespace(entries=[parse_fixture().entries[0]], bozo=False)
+        fetch_mock.side_effect = [
+            first_page,
+            HTTPError("https://export.arxiv.org/api/query", 406, "Not Acceptable", {}, None),
+        ]
+        config = {"local_timezone": "Asia/Shanghai", "target_days_ago": 2, "arxiv_page_size": 1}
+
+        with self.assertRaises(HTTPError) as context:
+            fetch_papers(config)
+
+        self.assertEqual(context.exception.code, 406)
+        self.assertEqual(fetch_mock.call_count, 2)
 
 
 if __name__ == "__main__":

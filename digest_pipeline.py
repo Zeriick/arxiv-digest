@@ -1,10 +1,20 @@
+from datetime import datetime
+from urllib.error import HTTPError, URLError
+from zoneinfo import ZoneInfo
+
 from digest_config import (
     get_runtime_config,
     get_smtp_config,
     log_runtime_config,
     validate_runtime_config,
 )
-from digest_email import build_email, build_email_subject, send_email
+from digest_email import (
+    WEEKEND_EMPTY_EMAIL_SUBJECT,
+    build_email,
+    build_email_subject,
+    build_weekend_empty_email,
+    send_email,
+)
 from digest_llm import batch_assess_papers, batch_summarize_papers
 from digest_runtime import (
     LOGGER,
@@ -308,6 +318,45 @@ def summarize_ranked_candidates(ranked_candidates, config, stats):
     return selected
 
 
+def is_local_weekend(config):
+    return datetime.now(ZoneInfo(config["local_timezone"])).weekday() >= 5
+
+
+def is_recoverable_arxiv_error(error):
+    if isinstance(error, HTTPError):
+        return error.code in {406, 429, 500, 502, 503, 504}
+    return isinstance(error, (URLError, TimeoutError))
+
+
+def finish_weekend_without_papers(config, smtp_config, stats, source_unavailable, target_announcement=None):
+    html = build_weekend_empty_email(source_unavailable=source_unavailable)
+    preview_path = write_text_artifact("email_preview.html", html)
+    LOGGER.info(
+        "Weekend digest has no papers | source_unavailable=%s preview_path=%s",
+        source_unavailable,
+        preview_path,
+    )
+
+    if config["dry_run"]:
+        LOGGER.info("DRY_RUN enabled, skipping weekend email send")
+    else:
+        send_email(html, smtp_config, subject=WEEKEND_EMPTY_EMAIL_SUBJECT)
+
+    summary_payload = {
+        "dry_run": config["dry_run"],
+        "target_date": target_announcement["label_date"].isoformat() if target_announcement else None,
+        "fetch_status": "source_unavailable" if source_unavailable else "no_papers",
+        "stats": stats,
+        "selected_titles": [],
+        "selected_ids": [],
+        "log_dir": str(get_run_dir()) if get_run_dir() else None,
+        "email_subject": WEEKEND_EMPTY_EMAIL_SUBJECT,
+        "email_preview_path": str(preview_path) if preview_path else None,
+    }
+    summary_path = write_json_artifact("pipeline_summary.json", summary_payload)
+    LOGGER.info("Pipeline finished successfully | summary_path=%s", summary_path)
+
+
 def main():
     setup_logging()
 
@@ -325,10 +374,32 @@ def main():
     new_seen = set(seen)
     all_assessments = []
 
-    papers, target_announcement, pages_fetched = fetch_papers(config)
+    try:
+        papers, target_announcement, pages_fetched = fetch_papers(config)
+    except (HTTPError, URLError, TimeoutError) as exc:
+        if not is_local_weekend(config) or not is_recoverable_arxiv_error(exc):
+            raise
+        LOGGER.warning(
+            "arXiv unavailable during weekend run; sending empty digest | error_type=%s error=%s",
+            type(exc).__name__,
+            exc,
+        )
+        finish_weekend_without_papers(config, smtp_config, stats, source_unavailable=True)
+        return
+
     stats["fetched_target_day"] = len(papers)
     stats["fetched_target_announcement"] = len(papers)
     stats["pages_fetched"] = pages_fetched
+
+    if not papers and is_local_weekend(config):
+        finish_weekend_without_papers(
+            config,
+            smtp_config,
+            stats,
+            source_unavailable=False,
+            target_announcement=target_announcement,
+        )
+        return
 
     pending_papers = prepare_pending_papers(
         papers,
@@ -387,7 +458,17 @@ def main():
         else:
             send_email(html, smtp_config, subject=email_subject)
     else:
-        LOGGER.info("No papers selected, skipping email generation and email send")
+        if is_local_weekend(config) and not stats["assessment_failed"] and not stats["summary_failed"]:
+            html = build_weekend_empty_email()
+            email_subject = WEEKEND_EMPTY_EMAIL_SUBJECT
+            email_preview_path = write_text_artifact("email_preview.html", html)
+            LOGGER.info("Weekend digest has no papers to recommend | preview_path=%s", email_preview_path)
+            if config["dry_run"]:
+                LOGGER.info("DRY_RUN enabled, skipping weekend email send")
+            else:
+                send_email(html, smtp_config, subject=email_subject)
+        else:
+            LOGGER.info("No papers selected, skipping email generation and email send")
 
     if config["dry_run"]:
         preview_seen_path = write_json_artifact("seen_ids.preview.json", sorted(new_seen))
