@@ -29,6 +29,7 @@
 - 使用 DeepSeek 兼容 OpenAI API 的模型做评估和摘要
 - 先判断论文是否在 digest 范围内，再按“是否值得认真读”打分
 - 对通过筛选的论文排序，最终只发送 Top 10
+- 评估阶段只返回相关性、分数和分类；推荐理由及单位信号合并到入选论文的摘要阶段生成，避免为未入选论文消耗解释输出 token
 - 入选论文中只要有评分不低于 90 分的论文，邮件标题会醒目标注 90+ 篇数和最高分
 - 对待评估论文在 LLM 评估前批量并发调用 OpenAlex，按作者名补作者单位
 - 对 LLM 相关性评估和 summary 阶段做受控并发，减少串行等待
@@ -227,6 +228,11 @@ python macro_main.py
 - `ranked_candidates.json`
 - `selected_papers.json`
 - `email_preview.html`
+
+`paper_assessments.json` 和 `ranked_candidates.json` 不包含 LLM 推荐理由或单位信号；
+这些字段只在 `selected_papers.json` 中生成（本地规则过滤仍保留规则说明）。
+论文 LLM 调用日志记录 `cache_hit_tokens`、`cache_miss_tokens` 和 `completion_tokens`，
+可按 `stage=assess` / `stage=summary` 比较缓存命中和输出用量；服务端未返回缓存用量时记录 `n/a`。
 
 如果打开了 `LOG_RAW_LLM=true`，还会额外生成：
 

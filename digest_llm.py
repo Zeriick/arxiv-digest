@@ -78,7 +78,7 @@ def llm_call(prompt, stage, paper_tag, config):
     usage = getattr(response, "usage", None)
     if usage is not None:
         LOGGER.info(
-            "LLM request finished | stage=%s paper=%s model=%s duration=%.2fs total_tokens=%s prompt_tokens=%s completion_tokens=%s response_chars=%d response_id=%s",
+            "LLM request finished | stage=%s paper=%s model=%s duration=%.2fs total_tokens=%s prompt_tokens=%s completion_tokens=%s cache_hit_tokens=%s cache_miss_tokens=%s response_chars=%d response_id=%s",
             stage,
             paper_tag,
             config["llm_model"],
@@ -86,6 +86,8 @@ def llm_call(prompt, stage, paper_tag, config):
             getattr(usage, "total_tokens", "n/a"),
             getattr(usage, "prompt_tokens", "n/a"),
             getattr(usage, "completion_tokens", "n/a"),
+            getattr(usage, "prompt_cache_hit_tokens", "n/a"),
+            getattr(usage, "prompt_cache_miss_tokens", "n/a"),
             len(content),
             getattr(response, "id", "n/a"),
         )
@@ -123,8 +125,6 @@ def validate_assessment_payload(payload):
     relevant = payload.get("relevant")
     score = payload.get("score")
     fit_area = payload.get("fit_area")
-    reason = payload.get("reason")
-    affiliation_signal = payload.get("affiliation_signal")
 
     if isinstance(relevant, str):
         normalized_relevant = relevant.strip().lower()
@@ -185,24 +185,10 @@ def validate_assessment_payload(payload):
     }
     fit_area = fit_area_map.get(normalized_fit_area, fit_area)
 
-    reason = str(reason).strip() if reason is not None else ""
-    if not reason:
-        reason = (
-            "The paper does not appear to be a strong fit for this OS / AI-infra / compiler / program-analysis digest."
-            if not relevant
-            else "The paper appears relevant to this OS / AI-infra / compiler / program-analysis digest."
-        )
-
-    affiliation_signal = str(affiliation_signal).strip() if affiliation_signal is not None else ""
-    if not affiliation_signal:
-        affiliation_signal = "No useful affiliation signal is available."
-
     return {
         "relevant": relevant,
         "score": score if relevant else 0,
         "fit_area": fit_area,
-        "reason": reason,
-        "affiliation_signal": affiliation_signal,
     }
 
 
@@ -336,6 +322,10 @@ def validate_summary_payload(payload):
     if not isinstance(translation, str) or not translation.strip():
         raise ValueError("translation must be a non-empty string")
 
+    for field in ("reason", "affiliation_signal"):
+        if not isinstance(payload.get(field), str) or not payload[field].strip():
+            raise ValueError(f"{field} must be a non-empty string")
+
     explanation = payload.get("explanation")
     if explanation is not None and not isinstance(explanation, str):
         raise ValueError("explanation must be a string when present")
@@ -343,11 +333,12 @@ def validate_summary_payload(payload):
     return payload
 
 
-def summarize(title, abstract, paper_tag, config):
+def summarize(title, abstract, paper_tag, config, authors=None):
     prompt = (
         f"{SUMMARY_PROMPT}\n\n"
         "<PAPER>\n"
         f"<TITLE>{title}</TITLE>\n"
+        f"<AUTHORS>\n{format_authors_for_prompt(authors)}\n</AUTHORS>\n"
         f"<ABSTRACT>\n{abstract}\n</ABSTRACT>\n"
         "</PAPER>"
     )
@@ -397,6 +388,7 @@ def batch_summarize_papers(candidates, config):
                     candidate["abstract"],
                     candidate["summary_tag"],
                     config,
+                    authors=candidate["authors"],
                 )
                 results[index] = build_result(index, summary=summary)
             except Exception as exc:
@@ -423,6 +415,7 @@ def batch_summarize_papers(candidates, config):
                 candidate["abstract"],
                 candidate["summary_tag"],
                 config,
+                authors=candidate["authors"],
             ): index
             for index, candidate in enumerate(candidates)
         }

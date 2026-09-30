@@ -225,8 +225,6 @@ def process_assessment_results(assessment_results, stats, new_seen, all_assessme
             "relevant": assessment["relevant"],
             "score": assessment["score"],
             "fit_area": assessment["fit_area"],
-            "reason": assessment["reason"],
-            "affiliation_signal": assessment["affiliation_signal"],
         }
         all_assessments.append(assessment_record)
 
@@ -246,8 +244,6 @@ def process_assessment_results(assessment_results, stats, new_seen, all_assessme
                 "openalex": openalex_record,
                 "score": assessment["score"],
                 "fit_area": assessment["fit_area"],
-                "reason": assessment["reason"],
-                "affiliation_signal": assessment["affiliation_signal"],
             }
         )
 
@@ -294,8 +290,8 @@ def summarize_ranked_candidates(ranked_candidates, config, stats):
                 "openalex": candidate["openalex"],
                 "score": candidate["score"],
                 "fit_area": candidate["fit_area"],
-                "reason": candidate["reason"],
-                "affiliation_signal": candidate["affiliation_signal"],
+                "reason": summary["reason"],
+                "affiliation_signal": summary["affiliation_signal"],
             }
             selected.append(selected_item)
             stats["selected"] = len(selected)
