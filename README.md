@@ -111,7 +111,8 @@ source ./local.env.sh
 | `ARXIV_PAGE_SIZE` | 每页抓取多少篇，默认 100 |
 | `TARGET_DAYS_AGO` | 回看几期 arXiv 已发布公告，默认 `1` 表示最近一期公告 |
 | `LOCAL_TIMEZONE` | 本地时区，默认 `Asia/Shanghai` |
-| `LLM_MODEL` | 评估和摘要使用的模型，默认 `qwen3.7-flash` |
+| `LLM_MODEL` | 论文评估及宏观日报使用的模型，默认 `qwen3.7-flash` |
+| `LLM_SUMMARY_MODEL` | 入选论文的摘要、中文概述、推荐理由和单位信号使用的模型，默认 `qwen3.7-plus` |
 | `LLM_TIMEOUT_SECONDS` | 单次 LLM 请求超时时间 |
 | `LLM_ENABLE_THINKING` | 是否开启 Qwen 思考模式，默认 `true`；设为 `false` 可减少思考 token |
 | `LLM_BASE_URL` | 百炼兼容接口地址，默认使用下文的北京工作空间 endpoint |
@@ -122,7 +123,8 @@ source ./local.env.sh
 | `OPENALEX_MAX_WORKERS` | OpenAlex 并发线程数，默认 8 |
 | `OPENALEX_EMAIL` | 可选。只有你想显式标识调用方时才设置；默认不传 `mailto` |
 
-默认模型为 `qwen3.7-flash`，默认接口为：
+论文评估及宏观日报默认模型为 `qwen3.7-flash`，入选论文的摘要生成默认使用
+`qwen3.7-plus`。两者使用相同的百炼 API Key、接口和思考开关。默认接口为：
 
 ```text
 https://llm-n24dtariayaaxxte.cn-beijing.maas.aliyuncs.com/compatible-mode/v1
@@ -140,6 +142,7 @@ https://llm-n24dtariayaaxxte.cn-beijing.maas.aliyuncs.com/compatible-mode/v1
 
 ```bash
 export LLM_MODEL=qwen3.7-flash
+export LLM_SUMMARY_MODEL=qwen3.7-plus
 export LLM_ENABLE_THINKING=true
 ```
 

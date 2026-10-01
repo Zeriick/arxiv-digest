@@ -1,11 +1,12 @@
 import os
+import json
 import unittest
 from unittest.mock import patch
 
 from openai.types.chat import ChatCompletionChunk
 
 from digest_config import get_runtime_config, validate_runtime_config
-from digest_llm import llm_call
+from digest_llm import assess_paper, llm_call, summarize
 from digest_runtime import DEFAULT_LLM_BASE_URL, create_json_completion, get_client
 from macro_config import get_macro_runtime_config, validate_macro_runtime_config
 from macro_llm import call_macro_synthesis_model, repair_macro_json_with_llm
@@ -73,6 +74,31 @@ class BailianMigrationTests(unittest.TestCase):
                 with patch.dict(os.environ, {"DASHSCOPE_API_KEY": ""}):
                     with self.assertRaisesRegex(RuntimeError, "DASHSCOPE_API_KEY"):
                         validate(config, {"use_ssl": True, "use_starttls": False})
+
+    def test_summary_model_has_independent_default_and_override(self):
+        with patch.dict(os.environ, {"LLM_MODEL": "qwen3.7-flash"}, clear=True):
+            self.assertEqual(get_runtime_config()["llm_summary_model"], "qwen3.7-plus")
+            with patch.dict(os.environ, {"LLM_SUMMARY_MODEL": "custom-summary-model"}):
+                self.assertEqual(get_runtime_config()["llm_summary_model"], "custom-summary-model")
+
+    @patch("digest_runtime.get_client")
+    def test_only_selected_paper_summary_uses_plus(self, client):
+        assessment = {"relevant": True, "score": 85, "fit_area": "AI-Compiler"}
+        summary = {
+            "summary": ["Problem", "Method", "Result"], "translation": "中文概述",
+            "reason": "Concrete contribution", "affiliation_signal": "No useful signal",
+        }
+        client.return_value.chat.completions.create.side_effect = [
+            FakeStream([chunk({"content": json.dumps(assessment)}, finish="stop")]),
+            FakeStream([chunk({"content": json.dumps(summary)}, finish="stop")]),
+            answer_stream(),
+        ]
+        self.assertEqual(assess_paper("Title", "Abstract", [], "paper", self.config), assessment)
+        self.assertEqual(summarize("Title", "Abstract", "paper", self.config), summary)
+        call_macro_synthesis_model("JSON", self.config)
+        models = [call.kwargs["model"] for call in client.return_value.chat.completions.create.call_args_list]
+        self.assertEqual(models, ["qwen3.7-flash", "qwen3.7-plus", "qwen3.7-flash"])
+        self.assertEqual(self.config["llm_model"], "qwen3.7-flash")
 
     @patch("digest_runtime.get_client")
     def test_stream_separates_reasoning_and_reads_usage_only_packet(self, client):

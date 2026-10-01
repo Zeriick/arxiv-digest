@@ -16,6 +16,7 @@ DEFAULT_OPENALEX_TIMEOUT_SECONDS = 15
 DEFAULT_OPENALEX_MAX_WORKERS = 8
 DEFAULT_LLM_ASSESS_MAX_WORKERS = 16
 DEFAULT_LLM_SUMMARY_MAX_WORKERS = 8
+DEFAULT_LLM_SUMMARY_MODEL = "qwen3.7-plus"
 
 
 def bool_env(name, default=False):
@@ -41,6 +42,7 @@ def get_runtime_config():
         "dry_run": bool_env("DRY_RUN", False),
         "log_raw_llm": bool_env("LOG_RAW_LLM", False),
         "llm_model": os.getenv("LLM_MODEL", DEFAULT_LLM_MODEL).strip() or DEFAULT_LLM_MODEL,
+        "llm_summary_model": os.getenv("LLM_SUMMARY_MODEL", "").strip() or DEFAULT_LLM_SUMMARY_MODEL,
         "llm_base_url": get_llm_base_url(),
         "llm_timeout_seconds": int_env("LLM_TIMEOUT_SECONDS", 90),
         "llm_enable_thinking": get_llm_enable_thinking(),
@@ -146,6 +148,7 @@ def log_runtime_config(config, smtp_config):
         "dry_run": config["dry_run"],
         "log_raw_llm": config["log_raw_llm"],
         "llm_model": config["llm_model"],
+        "llm_summary_model": config["llm_summary_model"],
         "llm_base_url": config["llm_base_url"],
         "llm_timeout_seconds": config["llm_timeout_seconds"],
         "llm_enable_thinking": config["llm_enable_thinking"],
@@ -169,9 +172,10 @@ def log_runtime_config(config, smtp_config):
         "email_pass_masked": mask_value(smtp_config["password"]),
     }
     LOGGER.info(
-        "Runtime configuration loaded | dry_run=%s model=%s llm_timeout=%ss enable_thinking=%s llm_assess_workers=%s llm_summary_workers=%s max_selected=%s arxiv_page_size=%s target_days_ago=%s timezone=%s openalex_enabled=%s openalex_timeout=%ss openalex_workers=%s smtp_host=%s smtp_port=%s smtp_ssl=%s smtp_starttls=%s log_raw_llm=%s",
+        "Runtime configuration loaded | dry_run=%s model=%s summary_model=%s llm_timeout=%ss enable_thinking=%s llm_assess_workers=%s llm_summary_workers=%s max_selected=%s arxiv_page_size=%s target_days_ago=%s timezone=%s openalex_enabled=%s openalex_timeout=%ss openalex_workers=%s smtp_host=%s smtp_port=%s smtp_ssl=%s smtp_starttls=%s log_raw_llm=%s",
         safe_config["dry_run"],
         safe_config["llm_model"],
+        safe_config["llm_summary_model"],
         safe_config["llm_timeout_seconds"],
         safe_config["llm_enable_thinking"],
         safe_config["llm_assess_max_workers"],

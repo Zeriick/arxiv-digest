@@ -2,6 +2,7 @@ import json
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+from digest_config import DEFAULT_LLM_SUMMARY_MODEL
 from digest_runtime import LOGGER, create_json_completion, write_text_artifact
 from digest_sources import format_authors_for_prompt
 from prompts import ASSESS_PROMPT, SUMMARY_PROMPT, SYSTEM_PROMPT
@@ -333,7 +334,11 @@ def summarize(title, abstract, paper_tag, config, authors=None):
         f"<ABSTRACT>\n{abstract}\n</ABSTRACT>\n"
         "</PAPER>"
     )
-    result = llm_call(prompt, "summary", paper_tag, config)
+    summary_config = {
+        **config,
+        "llm_model": config.get("llm_summary_model", DEFAULT_LLM_SUMMARY_MODEL),
+    }
+    result = llm_call(prompt, "summary", paper_tag, summary_config)
 
     try:
         payload = parse_json_response(result)
