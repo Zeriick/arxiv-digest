@@ -2,13 +2,9 @@ import json
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from digest_runtime import LOGGER, get_client, write_text_artifact
+from digest_runtime import LOGGER, create_json_completion, write_text_artifact
 from digest_sources import format_authors_for_prompt
 from prompts import ASSESS_PROMPT, SUMMARY_PROMPT, SYSTEM_PROMPT
-
-
-def build_extra_body(config):
-    return {"reasoning_effort": config["llm_reasoning_effort"]}
 
 
 def parse_json_response(text):
@@ -39,26 +35,21 @@ def llm_call(prompt, stage, paper_tag, config):
         )
 
     start_time = time.perf_counter()
-    extra_body = build_extra_body(config)
     LOGGER.info(
-        "LLM request started | stage=%s paper=%s model=%s timeout=%ss reasoning_effort=%s",
+        "LLM request started | stage=%s paper=%s model=%s timeout=%ss enable_thinking=%s",
         stage,
         paper_tag,
         config["llm_model"],
         config["llm_timeout_seconds"],
-        config["llm_reasoning_effort"],
+        config["llm_enable_thinking"],
     )
     try:
-        response = get_client().chat.completions.create(
-            model=config["llm_model"],
+        response = create_json_completion(
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": prompt},
             ],
-            temperature=0.2,
-            timeout=config["llm_timeout_seconds"],
-            response_format={"type": "json_object"},
-            extra_body=extra_body,
+            config=config,
         )
     except Exception as exc:
         duration = time.perf_counter() - start_time

@@ -1,8 +1,8 @@
 import json
 import time
 
-from digest_llm import build_extra_body, parse_json_response
-from digest_runtime import LOGGER, get_client, write_text_artifact
+from digest_llm import parse_json_response
+from digest_runtime import LOGGER, create_json_completion, write_text_artifact
 from macro_prompts import MACRO_REPORT_PROMPT, MACRO_SYSTEM_PROMPT
 
 MACRO_MODULE_KEYS = [
@@ -268,29 +268,31 @@ def repair_macro_json_with_llm(content, config):
         "Return JSON only with no markdown fences and no extra commentary.\n\n"
         f"Malformed JSON:\n{content}"
     )
-    extra_body = build_extra_body(config)
     LOGGER.info(
         "Macro LLM JSON repair started | model=%s timeout=%ss",
         config["llm_model"],
         config["llm_timeout_seconds"],
     )
     start_time = time.perf_counter()
-    response = get_client().chat.completions.create(
-        model=config["llm_model"],
+    response = create_json_completion(
         messages=[
             {"role": "system", "content": "You repair malformed JSON and return strict valid JSON only."},
             {"role": "user", "content": repair_prompt},
         ],
         temperature=0,
-        timeout=config["llm_timeout_seconds"],
-        response_format={"type": "json_object"},
-        extra_body=extra_body,
+        config=config,
     )
     content = response.choices[0].message.content or ""
     duration = time.perf_counter() - start_time
+    usage = response.usage
     LOGGER.info(
-        "Macro LLM JSON repair finished | duration=%.2fs response_chars=%d response_id=%s",
+        "Macro LLM JSON repair finished | duration=%.2fs total_tokens=%s prompt_tokens=%s completion_tokens=%s cache_hit_tokens=%s cache_miss_tokens=%s response_chars=%d response_id=%s",
         duration,
+        getattr(usage, "total_tokens", "n/a"),
+        getattr(usage, "prompt_tokens", "n/a"),
+        getattr(usage, "completion_tokens", "n/a"),
+        getattr(usage, "prompt_cache_hit_tokens", "n/a"),
+        getattr(usage, "prompt_cache_miss_tokens", "n/a"),
         len(content),
         getattr(response, "id", "n/a"),
     )
@@ -301,24 +303,19 @@ def repair_macro_json_with_llm(content, config):
 
 def call_macro_synthesis_model(prompt, config):
     start_time = time.perf_counter()
-    extra_body = build_extra_body(config)
     LOGGER.info(
-        "Macro LLM synthesis started | model=%s timeout=%ss reasoning_effort=%s",
+        "Macro LLM synthesis started | model=%s timeout=%ss enable_thinking=%s",
         config["llm_model"],
         config["llm_timeout_seconds"],
-        config["llm_reasoning_effort"],
+        config["llm_enable_thinking"],
     )
 
-    response = get_client().chat.completions.create(
-        model=config["llm_model"],
+    response = create_json_completion(
         messages=[
             {"role": "system", "content": MACRO_SYSTEM_PROMPT},
             {"role": "user", "content": prompt},
         ],
-        temperature=0.2,
-        timeout=config["llm_timeout_seconds"],
-        response_format={"type": "json_object"},
-        extra_body=extra_body,
+        config=config,
     )
 
     duration = time.perf_counter() - start_time
@@ -326,11 +323,13 @@ def call_macro_synthesis_model(prompt, config):
     usage = getattr(response, "usage", None)
     if usage is not None:
         LOGGER.info(
-            "Macro LLM synthesis finished | duration=%.2fs total_tokens=%s prompt_tokens=%s completion_tokens=%s response_chars=%d response_id=%s",
+            "Macro LLM synthesis finished | duration=%.2fs total_tokens=%s prompt_tokens=%s completion_tokens=%s cache_hit_tokens=%s cache_miss_tokens=%s response_chars=%d response_id=%s",
             duration,
             getattr(usage, "total_tokens", "n/a"),
             getattr(usage, "prompt_tokens", "n/a"),
             getattr(usage, "completion_tokens", "n/a"),
+            getattr(usage, "prompt_cache_hit_tokens", "n/a"),
+            getattr(usage, "prompt_cache_miss_tokens", "n/a"),
             len(content),
             getattr(response, "id", "n/a"),
         )

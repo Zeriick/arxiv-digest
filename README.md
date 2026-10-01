@@ -26,7 +26,7 @@
 ## 功能概览
 
 - 优先使用 arXiv 官方每日 Atom feed 抓取最近一期公告；回看更早公告时使用 search API
-- 使用 DeepSeek 兼容 OpenAI API 的模型做评估和摘要
+- 使用阿里云百炼兼容 OpenAI API 的模型做评估和摘要
 - 先判断论文是否在 digest 范围内，再按“是否值得认真读”打分
 - 对通过筛选的论文排序，最终只发送 Top 10
 - 评估阶段只返回相关性、分数和分类；推荐理由及单位信号合并到入选论文的摘要阶段生成，避免为未入选论文消耗解释输出 token
@@ -86,7 +86,7 @@ source ./local.env.sh
 
 你至少需要确认这些变量是正确的：
 
-- `DEEPSEEK_API_KEY`
+- `DASHSCOPE_API_KEY`
 - `EMAIL_USER`
 - `EMAIL_PASS`
 - `EMAIL_TO`
@@ -96,7 +96,7 @@ source ./local.env.sh
 
 | 变量 | 说明 |
 | --- | --- |
-| `DEEPSEEK_API_KEY` | DeepSeek API Key |
+| `DASHSCOPE_API_KEY` | 阿里云百炼 API Key |
 | `EMAIL_USER` | 发件邮箱 |
 | `EMAIL_PASS` | 发件邮箱密码 |
 | `EMAIL_TO` | 收件邮箱 |
@@ -111,15 +111,37 @@ source ./local.env.sh
 | `ARXIV_PAGE_SIZE` | 每页抓取多少篇，默认 100 |
 | `TARGET_DAYS_AGO` | 回看几期 arXiv 已发布公告，默认 `1` 表示最近一期公告 |
 | `LOCAL_TIMEZONE` | 本地时区，默认 `Asia/Shanghai` |
-| `LLM_MODEL` | 评估和摘要使用的模型，默认 `deepseek-flash` |
+| `LLM_MODEL` | 评估和摘要使用的模型，默认 `qwen3.7-flash` |
 | `LLM_TIMEOUT_SECONDS` | 单次 LLM 请求超时时间 |
-| `LLM_REASONING_EFFORT` | DeepSeek 推理强度，可选 `none`、`low`、`high`、`max`，默认 `none` |
-| `LLM_ASSESS_MAX_WORKERS` | 相关性评估阶段的并发线程数，默认 8 |
-| `LLM_SUMMARY_MAX_WORKERS` | summary 阶段的并发线程数，默认 4 |
+| `LLM_ENABLE_THINKING` | 是否开启 Qwen 思考模式，默认 `true`；设为 `false` 可减少思考 token |
+| `LLM_BASE_URL` | 百炼兼容接口地址，默认使用下文的北京工作空间 endpoint |
+| `LLM_ASSESS_MAX_WORKERS` | 相关性评估阶段的并发线程数，默认 16 |
+| `LLM_SUMMARY_MAX_WORKERS` | summary 阶段的并发线程数，默认 8 |
 | `OPENALEX_ENRICHMENT_ENABLED` | 是否在评估前按作者名用 OpenAlex 补作者单位，默认 `true` |
 | `OPENALEX_TIMEOUT_SECONDS` | OpenAlex 请求超时时间，默认 15 秒 |
 | `OPENALEX_MAX_WORKERS` | OpenAlex 并发线程数，默认 8 |
 | `OPENALEX_EMAIL` | 可选。只有你想显式标识调用方时才设置；默认不传 `mailto` |
+
+默认模型为 `qwen3.7-flash`，默认接口为：
+
+```text
+https://llm-n24dtariayaaxxte.cn-beijing.maas.aliyuncs.com/compatible-mode/v1
+```
+
+两条日报及宏观 JSON 修复均使用流式调用，并通过 `stream_options.include_usage=true`
+获取最后一包用量。只拼接 `delta.content` 作为最终 JSON，不把 `reasoning_content` 混入结果。
+开启思考时通过 prompt 要求 JSON，不发送可能与思考模式冲突的 `response_format`；
+关闭思考时启用 JSON Mode。日志额外记录服务端返回的 `reasoning_tokens`，
+缓存命中兼容百炼的 `prompt_tokens_details.cached_tokens`；未提供缓存数据时记为 `n/a`。
+
+迁移后需要设置 `DASHSCOPE_API_KEY`，旧 `DEEPSEEK_API_KEY` 不再使用。
+`LLM_REASONING_EFFORT` 已由 `LLM_ENABLE_THINKING` 替代；旧变量不再控制思考模式。
+本地可配置：
+
+```bash
+export LLM_MODEL=qwen3.7-flash
+export LLM_ENABLE_THINKING=true
+```
 
 ### 3. 本地 dry run
 
@@ -257,7 +279,7 @@ python macro_main.py
 
 OpenAlex 现在会在 LLM 判断相关性之前统一批量跑完，并且会对作者名去重后再并发请求，避免串行网络等待成为主瓶颈。
 
-LLM 的相关性评估和 summary 阶段现在都支持受控并发，默认分别使用 `LLM_ASSESS_MAX_WORKERS=8` 和 `LLM_SUMMARY_MAX_WORKERS=4`。如果你的模型限流比较紧，可以把它们调低。
+LLM 的相关性评估和 summary 阶段现在都支持受控并发，默认分别使用 `LLM_ASSESS_MAX_WORKERS=16` 和 `LLM_SUMMARY_MAX_WORKERS=8`。如果你的模型限流比较紧，可以把它们调低。
 
 ## 部署到 GitHub
 
@@ -311,7 +333,7 @@ git push
 
 添加这些 secrets：
 
-- `DEEPSEEK_API_KEY`
+- `DASHSCOPE_API_KEY`
 - `EMAIL_USER`
 - `EMAIL_PASS`
 - `EMAIL_TO`
