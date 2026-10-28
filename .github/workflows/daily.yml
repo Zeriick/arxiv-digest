@@ -29,7 +29,7 @@ jobs:
           EMAIL_USER: ${{ secrets.EMAIL_USER }}
           EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
-          EMAIL_SMTP_HOST: mail.tiaozhan.com
+          EMAIL_SMTP_HOST: smtp.qq.com
           EMAIL_SMTP_PORT: "465"
           EMAIL_USE_SSL: "true"
           EMAIL_USE_STARTTLS: "false"
